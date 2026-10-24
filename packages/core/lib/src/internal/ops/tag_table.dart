@@ -179,6 +179,8 @@ class TagTable {
         data.rows = data.cells.keys.length;
 
         final cellTree = cell.tree;
+        final cellChild =
+            cell.child ?? wf.buildColumnPlaceholder(cellTree, cell.blocks);
         final cssBorderParsed = tryParseBorder(cellTree);
         final cssBorder = cssBorderParsed.inherit
             ? tryParseBorder(tableTree).copyFrom(cssBorderParsed)
@@ -186,12 +188,12 @@ class TagTable {
         final cssWidth = cellTree.sizingInput?.preferredWidth;
 
         data.builders.add((context) {
-          Widget? child = cell.child;
+          Widget? child = cellChild;
 
           final resolved = cellTree.inheritanceResolvers.resolve(context);
           final border = cssBorder.getBorder(resolved);
-          if (border != null) {
-            child = wf.buildPadding(cellTree, cell.child, border.dimensions);
+          if (border != null && cellChild != null) {
+            child = wf.buildPadding(cellTree, cellChild, border.dimensions);
           }
           if (child == null) {
             return null;
@@ -374,7 +376,22 @@ class _TagTableRow {
     if (e.parent != rowTree.element) {
       return;
     }
-    if (TagTable._getCssDisplayValue(cellTree) != kCssDisplayTableCell) {
+
+    final declared = cellTree is CoreBuildTree
+        ? cellTree.peekStyle(kCssDisplay)?.term
+        : null;
+    if ((declared ?? TagTable._getCssDisplayValue(cellTree)) !=
+        kCssDisplayTableCell) {
+      if (declared != null && declared != kCssDisplayNone) {
+        cellTree.register(
+          BuildOp(
+            alwaysRenderBlock: true,
+            debugLabel: '$kTagTableRow--anonymous-cell',
+            onRenderedBlock: (_, block) =>
+                _onAnonymousRenderedBlock(rowTree, block),
+          ),
+        );
+      }
       return;
     }
 
@@ -398,6 +415,19 @@ class _TagTableRow {
         columnSpan: tryParseIntFromMap(attributes, kAttributeColspan) ?? 1,
         rowSpan: tryParseIntFromMap(attributes, kAttributeRowspan) ?? 1,
       ),
+    );
+  }
+
+  // https://www.w3.org/TR/CSS22/tables.html#anonymous-boxes
+  void _onAnonymousRenderedBlock(BuildTree rowTree, Widget block) {
+    var cell = cells.isEmpty ? null : cells.last;
+    if (cell == null || cell.child != null) {
+      cell = _TagTableDataCell.anonymous(rowTree.sub());
+      cells.add(cell);
+    }
+
+    cell.blocks.add(
+      block is WidgetPlaceholder ? block : WidgetPlaceholder(child: block),
     );
   }
 
@@ -494,15 +524,23 @@ class _TagTableData {
 
 @immutable
 class _TagTableDataCell {
-  final Widget child;
+  final List<WidgetPlaceholder> blocks;
+  final Widget? child;
   final int columnSpan;
   final BuildTree tree;
   final int rowSpan;
 
   const _TagTableDataCell(
     this.tree, {
-    required this.child,
+    required Widget this.child,
     required this.columnSpan,
     required this.rowSpan,
-  });
+  }) : blocks = const [];
+
+  /// Wraps consecutive non-cell children of a row, [child] is `null`.
+  _TagTableDataCell.anonymous(this.tree)
+      : blocks = [],
+        child = null,
+        columnSpan = 1,
+        rowSpan = 1;
 }

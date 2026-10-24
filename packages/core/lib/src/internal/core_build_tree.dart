@@ -10,6 +10,7 @@ import '../core_data.dart';
 import '../core_helpers.dart';
 import '../core_widget_factory.dart';
 import 'core_ops.dart';
+import 'core_parser.dart';
 import 'declarations_cache.dart';
 import 'flattener.dart';
 import 'style_sheet.dart';
@@ -22,6 +23,24 @@ final _regExpSpaces = RegExp('$_asciiWhitespace+', unicode: true);
 
 final _logger = Logger('fwfh.CoreBuildTree');
 final _rootElement = dom.Element.tag('root');
+
+// https://www.w3.org/TR/css-cascade-4/#defaulting-keywords
+const _cssWideKeywords = {'inherit', 'initial', 'revert', 'unset'};
+
+// inherited properties, any keyword falls back to the parent value
+const _inheritedProperties = {
+  kCssColor,
+  kCssDirection,
+  kCssFontFamily,
+  kCssFontSize,
+  kCssFontStyle,
+  kCssFontWeight,
+  kCssLineHeight,
+  kCssListStyleType,
+  kCssTextAlign,
+  kCssTextShadow,
+  kCssWhitespace,
+};
 
 class CoreBuildTree extends BuildTree {
   final WidgetFactory wf;
@@ -186,6 +205,23 @@ class CoreBuildTree extends BuildTree {
     }
 
     return null;
+  }
+
+  /// Returns the declaration of [property] from the style sheet and the
+  /// `style` attribute, for decisions made before [styles] are collected.
+  css.Declaration? peekStyle(String property) {
+    css.Declaration? normal;
+    css.Declaration? important;
+    for (final style in [...?_styleSheet?[element], ...element.styles]) {
+      if (style.property == property) {
+        if (style.important) {
+          important = style;
+        } else {
+          normal = style;
+        }
+      }
+    }
+    return important ?? normal;
   }
 
   @override
@@ -459,14 +495,35 @@ class _LockableDeclarations extends LockableList<css.Declaration> {
   void _lock() {
     _isLocked = true;
 
+    var values = _values;
+    if (values == null) {
+      return;
+    }
+
     // https://www.w3.org/TR/css-cascade-3/#importance
-    final values = _values;
-    if (values != null && values.any((style) => style.important)) {
-      _values = [
+    if (values.any((style) => style.important)) {
+      values = [
         ...values.where((style) => !style.important),
         ...values.where((style) => style.important),
       ];
     }
+
+    final resets = <String, int>{};
+    for (var i = 0; i < values.length; i++) {
+      final style = values[i];
+      if (_inheritedProperties.contains(style.property) &&
+          _cssWideKeywords.contains(style.term?.toLowerCase())) {
+        resets[style.property] = i;
+      }
+    }
+    if (resets.isNotEmpty) {
+      values = [
+        for (var i = 0; i < values.length; i++)
+          if (i > (resets[values[i].property] ?? -1)) values[i],
+      ];
+    }
+
+    _values = values;
   }
 }
 

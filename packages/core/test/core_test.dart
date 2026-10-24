@@ -1140,6 +1140,35 @@ void main() {
       final explained = await explain(tester, html);
       expect(explained, equals('[RichText:(+font=Arial:Foo)]'));
     });
+
+    testWidgets('renders inherit', (WidgetTester tester) async {
+      const html = '<div style="font-family: Arial">'
+          '<span style="font-family: inherit">Foo</span></div>';
+      final explained = await explain(tester, html);
+      expect(
+          explained, equals('[CssBlock:child=[RichText:(+font=Arial:Foo)]]'));
+    });
+
+    testWidgets('renders inherit over previous value', (tester) async {
+      const html = '<style>span { font-family: Monospace }</style>'
+          '<span style="font-family: inherit">Foo</span>';
+      final explained = await explain(tester, html);
+      expect(explained, equals('[RichText:(:Foo)]'));
+    });
+
+    testWidgets('renders value after inherit', (WidgetTester tester) async {
+      const html = '<span style="font-family: unset; font-family: Arial">'
+          'Foo</span>';
+      final explained = await explain(tester, html);
+      expect(explained, equals('[RichText:(+font=Arial:Foo)]'));
+    });
+
+    testWidgets('renders !important over inherit', (tester) async {
+      const html = '<style>span { font-family: Arial !important }</style>'
+          '<span style="font-family: inherit">Foo</span>';
+      final explained = await explain(tester, html);
+      expect(explained, equals('[RichText:(+font=Arial:Foo)]'));
+    });
   });
 
   group('font-size', () {

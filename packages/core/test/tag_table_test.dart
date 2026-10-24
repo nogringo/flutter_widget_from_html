@@ -985,6 +985,83 @@ Future<void> main() async {
     });
   });
 
+  group('TD display: block', () {
+    Rect rectOf(WidgetTester tester, String text) =>
+        tester.getRect(find.text(text, findRichText: true));
+
+    testWidgets('stacks cells', (WidgetTester tester) async {
+      await explain(
+        tester,
+        '<table><tr><td style="display: block">Foo</td>'
+        '<td style="display: block">Bar</td></tr></table>',
+      );
+
+      expect(find.byType(HtmlTableCell), findsOneWidget);
+      final foo = rectOf(tester, 'Foo');
+      final bar = rectOf(tester, 'Bar');
+      expect(bar.left, equals(foo.left));
+      expect(bar.top, greaterThanOrEqualTo(foo.bottom));
+    });
+
+    testWidgets('stacks cells from STYLE', (WidgetTester tester) async {
+      await explain(
+        tester,
+        '<style>.stack { display: block }</style>'
+        '<table><tr><td class="stack">Foo</td>'
+        '<td class="stack">Bar</td></tr></table>',
+      );
+
+      expect(find.byType(HtmlTableCell), findsOneWidget);
+      expect(rectOf(tester, 'Bar').top, greaterThan(rectOf(tester, 'Foo').top));
+    });
+
+    testWidgets('groups consecutive blocks', (WidgetTester tester) async {
+      await explain(
+        tester,
+        '<table><tr><td>A</td><td style="display: block">B</td>'
+        '<td style="display: block">C</td><td>D</td></tr></table>',
+      );
+
+      expect(find.byType(HtmlTableCell), findsNWidgets(3));
+      final b = rectOf(tester, 'B');
+      final c = rectOf(tester, 'C');
+      expect(c.left, equals(b.left));
+      expect(c.top, greaterThanOrEqualTo(b.bottom));
+      expect(rectOf(tester, 'A').right, lessThanOrEqualTo(b.left));
+      expect(rectOf(tester, 'D').left, greaterThanOrEqualTo(b.right));
+    });
+
+    group('responsive columns', () {
+      const html = '<style>@media (max-width: 480px) { '
+          '.container { width: 100% !important } '
+          '.stack { display: block !important; width: 100% !important } '
+          '}</style>'
+          '<table class="container" width="600" cellpadding="0"><tr>'
+          '<td class="stack" width="300">Foo</td>'
+          '<td class="stack" width="300">Bar</td>'
+          '</tr></table>';
+
+      testWidgets('renders side by side', (WidgetTester tester) async {
+        tester.setWindowSize(const Size(800, 600));
+        await explain(tester, html);
+
+        expect(rectOf(tester, 'Bar').top, equals(rectOf(tester, 'Foo').top));
+        expect(rectOf(tester, 'Bar').left, greaterThanOrEqualTo(300));
+      });
+
+      testWidgets('stacks on narrow screen', (WidgetTester tester) async {
+        tester.setWindowSize(const Size(400, 600));
+        await explain(tester, html);
+
+        final foo = rectOf(tester, 'Foo');
+        final bar = rectOf(tester, 'Bar');
+        expect(bar.left, equals(foo.left));
+        expect(bar.top, greaterThanOrEqualTo(foo.bottom));
+        expect(tester.getRect(find.byType(HtmlTable)).width, equals(400));
+      });
+    });
+  });
+
   testWidgets('renders display: table', (WidgetTester tester) async {
     const html = '''
 <div style="display: table">

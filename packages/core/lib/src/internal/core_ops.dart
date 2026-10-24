@@ -15,6 +15,7 @@ import '../core_widget_factory.dart';
 import '../material_theme.dart';
 import '../utils/list_utils.dart';
 import '../widgets/line_aligned_rich_text.dart';
+import 'core_build_tree.dart';
 import 'core_parser.dart';
 import 'margin_vertical.dart';
 import 'text_ops.dart' as text_ops;

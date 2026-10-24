@@ -133,6 +133,7 @@ Below tags are the ones that have special meaning / styling, all other tags will
   - TR attributes `align`, `bgcolor`
   - TD/TH attributes `align`, `bgcolor`, `colspan`, `rowspan`, `valign`, `width`
   - Table is scrollable if columns are too wide
+  - TD/TH `display: block` stacks the cells, like responsive emails do
 - ABBR, ACRONYM, ADDRESS, ARTICLE, ASIDE, B, BIG, BLOCKQUOTE, BR, CENTER, CITE, CODE,
   DD, DEL, DETAILS, DFN, DIV, DL, DT, EM, FIGCAPTION, FIGURE, FONT, FOOTER, HEADER, HR, I, INS,
   KBD, MAIN, MARK, NAV, NOSCRIPT, P, PRE, Q, RP, RT, RUBY, S, SAMP, SECTION, SMALL,
@@ -222,6 +223,7 @@ STYLE tags support the same properties as inline stylings:
 
 - Selectors: type, class, id, attribute, combinators, `:not()`, `:nth-child()`, etc. Rules using `:hover` or pseudo-elements are skipped. `html` and `body` selectors match nothing.
 - Cascade: specificity, source order and `!important` (inline stylings too). Inline stylings and `customStylesBuilder` win over style sheets.
+- `inherit`, `initial`, `revert` and `unset` on inherited properties (color, font-*, line-height, text-align, etc.) fall back to the parent value.
 - `@media` rules and the `media` attribute: `all`, `screen`, `not`, `only`, `and` and comma separated queries with
   - width, height, device-width, device-height and their `min-` / `max-` variants, values in `px`, `pt`, `em` or `rem`
   - orientation: portrait/landscape
