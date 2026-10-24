@@ -12,6 +12,7 @@ import '../core_widget_factory.dart';
 import 'core_ops.dart';
 import 'declarations_cache.dart';
 import 'flattener.dart';
+import 'style_sheet.dart';
 
 // https://infra.spec.whatwg.org/#ascii-whitespace
 const _asciiWhitespace = r'[\u{0009}\u{000A}\u{000C}\u{000D}\u{0020}]';
@@ -27,6 +28,7 @@ class CoreBuildTree extends BuildTree {
 
   final BuildTree? _parent;
   final Iterable<_CoreBuildOp> _parentOps;
+  final DocumentStyleSheet? _styleSheet;
   final _styles = _LockableDeclarations();
 
   SplayTreeSet<_CoreBuildOp>? _buildOps;
@@ -37,17 +39,21 @@ class CoreBuildTree extends BuildTree {
     required super.inheritanceResolvers,
     BuildTree? parent,
     Iterable<_CoreBuildOp> parentOps = const [],
+    DocumentStyleSheet? styleSheet,
     required this.wf,
   })  : _parent = parent,
-        _parentOps = parentOps;
+        _parentOps = parentOps,
+        _styleSheet = styleSheet;
 
   factory CoreBuildTree.root({
     required InheritanceResolvers inheritanceResolvers,
+    DocumentStyleSheet? styleSheet,
     required WidgetFactory wf,
   }) =>
       CoreBuildTree._(
         element: _rootElement,
         inheritanceResolvers: inheritanceResolvers,
+        styleSheet: styleSheet,
         wf: wf,
       );
 
@@ -132,6 +138,7 @@ class CoreBuildTree extends BuildTree {
       parentOps: copiedParent is CoreBuildTree
           ? _prepareParentOps(copiedParent._parentOps, copiedParent)
           : const [],
+      styleSheet: _styleSheet,
       wf: wf,
     );
 
@@ -174,8 +181,6 @@ class CoreBuildTree extends BuildTree {
 
     for (final style in values.reversed) {
       if (style.property == property) {
-        // TODO: add support for `!important`
-        // https://github.com/daohoangson/flutter_widget_from_html/issues/773
         return style;
       }
     }
@@ -333,6 +338,11 @@ class CoreBuildTree extends BuildTree {
       }
     }
 
+    final styleSheet = _styleSheet;
+    if (styleSheet != null) {
+      _styles.addAll(styleSheet[element]);
+    }
+
     _customStylesBuilder();
 
     final elementStyles = element.styles;
@@ -340,7 +350,7 @@ class CoreBuildTree extends BuildTree {
       _styles.addAll(elementStyles);
     }
 
-    _styles._isLocked = true;
+    _styles._lock();
     final values = _styles._values;
     if (values != null) {
       for (final style in values.toList(growable: false)) {
@@ -444,6 +454,19 @@ class _LockableDeclarations extends LockableList<css.Declaration> {
     assert(!_isLocked, 'Adding after being locked is undeterministic.');
     _values ??= [];
     _values?.addAll(iterable);
+  }
+
+  void _lock() {
+    _isLocked = true;
+
+    // https://www.w3.org/TR/css-cascade-3/#importance
+    final values = _values;
+    if (values != null && values.any((style) => style.important)) {
+      _values = [
+        ...values.where((style) => !style.important),
+        ...values.where((style) => style.important),
+      ];
+    }
   }
 }
 

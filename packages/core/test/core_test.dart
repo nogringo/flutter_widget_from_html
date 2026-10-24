@@ -390,7 +390,7 @@ void main() {
 
     testWidgets('skips STYLE tag', (WidgetTester tester) async {
       const html = '<style>.xxx { color: red; }</style>'
-          '<span class="xxx">Foo</span>';
+          '<span>Foo</span>';
       final explained = await explain(tester, html);
       expect(explained, equals('[RichText:(:Foo)]'));
     });

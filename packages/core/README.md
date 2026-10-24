@@ -150,7 +150,6 @@ These tags requires [flutter_widget_from_html](https://pub.dev/packages/flutter_
 These tags and their contents will be ignored:
 
 - SCRIPT
-- STYLE
 
 ### Attributes
 
@@ -216,6 +215,19 @@ These tags and their contents will be ignored:
 - Sizing: `auto` or values in `em`, `%`, `pt` and `px`
   - width, max-width, min-width
   - height, max-height, min-height
+
+### Style sheets
+
+STYLE tags support the same properties as inline stylings:
+
+- Selectors: type, class, id, attribute, combinators, `:not()`, `:nth-child()`, etc. Rules using `:hover` or pseudo-elements are skipped. `html` and `body` selectors match nothing.
+- Cascade: specificity, source order and `!important` (inline stylings too). Inline stylings and `customStylesBuilder` win over style sheets.
+- `@media` rules and the `media` attribute: `all`, `screen`, `not`, `only`, `and` and comma separated queries with
+  - width, height, device-width, device-height and their `min-` / `max-` variants, values in `px`, `pt`, `em` or `rem`
+  - orientation: portrait/landscape
+  - prefers-color-scheme: light/dark
+- Sizes come from the nearest `MediaQuery`, wrap the widget in one to use another viewport. The color scheme follows the Material theme brightness. The widget tree is rebuilt when a query result changes.
+- The range syntax (e.g. `(width <= 480px)`) is not supported.
 
 ## Extensibility
 

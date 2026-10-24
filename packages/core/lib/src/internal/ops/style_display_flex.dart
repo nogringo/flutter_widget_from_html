@@ -39,7 +39,7 @@ class StyleDisplayFlex {
         CssLength? gap;
         String justifyContent = kCssJustifyContentFlexStart;
 
-        for (final element in tree.element.styles) {
+        for (final element in tree.styles) {
           final String? value = element.term;
 
           if (value != null) {

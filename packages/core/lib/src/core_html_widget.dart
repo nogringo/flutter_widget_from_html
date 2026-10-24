@@ -11,6 +11,7 @@ import 'core_data.dart';
 import 'core_helpers.dart';
 import 'core_widget_factory.dart';
 import 'internal/core_build_tree.dart';
+import 'internal/style_sheet.dart';
 import 'material_theme.dart';
 
 final _logger = Logger('fwfh.HtmlWidget');
@@ -134,6 +135,7 @@ class HtmlWidgetState extends State<HtmlWidget> {
   int _buildGeneration = 0;
   Widget? _cache;
   Future<Widget>? _future;
+  CssMedia? _media;
   InheritedProperties? _rootProperties;
 
   bool get buildAsync =>
@@ -193,14 +195,16 @@ class HtmlWidgetState extends State<HtmlWidget> {
     }
 
     if (needsRebuild) {
-      _buildGeneration++;
-      _cache = null;
-      _future = buildAsync ? _buildAsync() : null;
+      _invalidate();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_media?.hasChanged == true) {
+      _invalidate();
+    }
+
     final future = _future;
     if (future != null) {
       return FutureBuilder<Widget>(
@@ -232,6 +236,13 @@ class HtmlWidgetState extends State<HtmlWidget> {
     }
 
     return _wrapper(_cache!);
+  }
+
+  void _invalidate() {
+    _buildGeneration++;
+    _cache = null;
+    _future = buildAsync ? _buildAsync() : null;
+    _media = null;
   }
 
   /// Scrolls to make sure the requested anchor is as visible as possible.
@@ -330,8 +341,14 @@ Widget _buildBody(HtmlWidgetState state, dom.NodeList domNodes) {
   final wf = state._wf;
   wf.reset(state);
 
-  final rootTree = state._rootTree;
+  final media = CssMedia(state.context, state.widget.materialThemeMode);
+  final rootTree = CoreBuildTree.root(
+    inheritanceResolvers: state._rootResolvers,
+    styleSheet: DocumentStyleSheet.tryParse(domNodes, media),
+    wf: wf,
+  );
   rootTree.addBitsFromNodes(domNodes);
+  state._media = media.isEmpty ? null : media;
 
   final built =
       rootTree.build()?.wrapWith(wf.buildBodyWidget) ?? state._sliverOrWidget0;
