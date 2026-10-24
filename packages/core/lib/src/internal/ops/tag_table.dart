@@ -85,6 +85,12 @@ class TagTable {
         ? tryParseCssLength(borderSpacingExpression)
         : null;
 
+    // the padding goes inside the border, collapsed tables have none
+    StylePadding.skip(tableTree);
+    final padding = borderCollapse == kCssBorderCollapseCollapse
+        ? null
+        : tryParseCssLengthBox(tableTree, kCssPadding);
+
     final layoutBuilder = HtmlLayoutBuilder(
       builder: (context, bc) {
         final resolved = tableTree.inheritanceResolvers.resolve(context);
@@ -94,6 +100,9 @@ class TagTable {
             borderCollapse: borderCollapse == kCssBorderCollapseCollapse,
             borderRadius: border.getBorderRadius(resolved),
             borderSpacing: borderSpacing?.getValue(resolved) ?? 0.0,
+            padding: padding != null
+                ? _paddingEdgeInsets(padding, resolved)
+                : EdgeInsets.zero,
             textDirection: resolved.directionOrLtr,
             children: List.from(
               data.builders

@@ -27,8 +27,21 @@ WidgetPlaceholder _paddingInlineBefore(BuildTree tree, CssLengthBox box) =>
 Widget _paddingInlineSizedBox(double? width) =>
     width != null && width > 0 ? SizedBox(width: width) : widget0;
 
+EdgeInsets _paddingEdgeInsets(
+  CssLengthBox padding,
+  InheritedProperties resolved,
+) =>
+    EdgeInsets.fromLTRB(
+      max(padding.getLeft(resolved)?.getValue(resolved) ?? 0.0, 0.0),
+      max(padding.top?.getValue(resolved) ?? 0.0, 0.0),
+      max(padding.getRight(resolved)?.getValue(resolved) ?? 0.0, 0.0),
+      max(padding.bottom?.getValue(resolved) ?? 0.0, 0.0),
+    );
+
 class StylePadding {
   final WidgetFactory wf;
+
+  static final _skipBuilding = Expando<bool>();
 
   StylePadding(this.wf);
 
@@ -36,6 +49,10 @@ class StylePadding {
         alwaysRenderBlock: false,
         debugLabel: kCssPadding,
         onRenderBlock: (tree, placeholder) {
+          if (_skipBuilding[tree] == true) {
+            return placeholder;
+          }
+
           final padding = tryParseCssLengthBox(tree, kCssPadding);
           if (padding == null) {
             return placeholder;
@@ -78,12 +95,10 @@ class StylePadding {
     return wf.buildPadding(
       tree,
       child,
-      EdgeInsets.fromLTRB(
-        max(padding.getLeft(resolved)?.getValue(resolved) ?? 0.0, 0.0),
-        max(padding.top?.getValue(resolved) ?? 0.0, 0.0),
-        max(padding.getRight(resolved)?.getValue(resolved) ?? 0.0, 0.0),
-        max(padding.bottom?.getValue(resolved) ?? 0.0, 0.0),
-      ),
+      _paddingEdgeInsets(padding, resolved),
     );
   }
+
+  /// Skips the padding of [tree] because its widget applies it.
+  static void skip(BuildTree tree) => _skipBuilding[tree] = true;
 }

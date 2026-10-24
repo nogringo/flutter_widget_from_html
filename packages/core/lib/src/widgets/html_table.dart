@@ -24,6 +24,11 @@ class HtmlTable extends MultiChildRenderObjectWidget {
   /// Default: `0.0`.
   final double borderSpacing;
 
+  /// The space between the table border and its cells.
+  ///
+  /// Default: [EdgeInsets.zero].
+  final EdgeInsets padding;
+
   /// Determines the order to lay children out horizontally.
   ///
   /// Default: [TextDirection.ltr].
@@ -36,6 +41,7 @@ class HtmlTable extends MultiChildRenderObjectWidget {
     this.borderRadius,
     this.borderSpacing = 0.0,
     required super.children,
+    this.padding = EdgeInsets.zero,
     this.textDirection = TextDirection.ltr,
     super.key,
   });
@@ -51,6 +57,7 @@ class HtmlTable extends MultiChildRenderObjectWidget {
       borderSpacing: borderSpacing,
       maxWidth: hint?.maxWidth,
       minWidth: hint?.minWidth,
+      padding: padding,
     );
   }
 
@@ -72,6 +79,9 @@ class HtmlTable extends MultiChildRenderObjectWidget {
     properties
         .add(DoubleProperty('borderSpacing', borderSpacing, defaultValue: 0.0));
     properties.add(
+      DiagnosticsProperty('padding', padding, defaultValue: EdgeInsets.zero),
+    );
+    properties.add(
       DiagnosticsProperty(
         'textDirection',
         textDirection,
@@ -90,6 +100,7 @@ class HtmlTable extends MultiChildRenderObjectWidget {
       ..setBorderSpacing(borderSpacing)
       ..setMaxWidth(hint?.maxWidth)
       ..setMinWidth(hint?.minWidth)
+      ..setPadding(padding)
       ..setTextDirection(textDirection);
   }
 }
@@ -322,13 +333,12 @@ class _TableCellData extends ContainerBoxParentData<RenderBox> {
   }
 
   double calculateX(_TableRenderObject tro, List<double> widths) {
-    final padding = tro._border?.left.width ?? 0.0;
     final gaps = (columnStart + 1) * tro.columnGap;
-    return padding + widths.getRange(0, columnStart).sum + gaps;
+    return widths.getRange(0, columnStart).sum + gaps;
   }
 
   double calculateY(_TableRenderObject tro, List<double> heights) {
-    final padding = isCaption ? .0 : (tro._border?.top.width ?? 0.0);
+    final padding = isCaption ? .0 : tro.paddingTop;
     final gaps = (rowStart + 1) * tro.rowGap;
     return padding + heights.getRange(0, rowStart).sum + gaps;
   }
@@ -673,9 +683,9 @@ class _TableRenderLayouter {
         double x;
         switch (tro._textDirection) {
           case TextDirection.ltr:
-            x = calculatedX;
+            x = tro.paddingLeft + calculatedX;
           case TextDirection.rtl:
-            x = calculatedWidth - childWidth - calculatedX;
+            x = calculatedWidth - tro.paddingRight - childWidth - calculatedX;
         }
 
         data.offset = Offset(x, calculatedY);
@@ -880,12 +890,14 @@ class _TableRenderObject extends RenderBox
     required BorderRadius? borderRadius,
     required double? maxWidth,
     required double? minWidth,
+    required EdgeInsets padding,
   })  : logger = Logger('fwfh.HtmlTable${loggers++}'),
         _borderCollapse = borderCollapse,
         _borderRadius = borderRadius,
         _borderSpacing = borderSpacing,
         _maxWidth = maxWidth,
-        _minWidth = minWidth;
+        _minWidth = minWidth,
+        _padding = padding;
 
   Border? _border;
   void setBorder(Border? v) {
@@ -937,6 +949,14 @@ class _TableRenderObject extends RenderBox
     }
   }
 
+  EdgeInsets _padding;
+  void setPadding(EdgeInsets v) {
+    if (v != _padding) {
+      _padding = v;
+      markNeedsLayout();
+    }
+  }
+
   TextDirection _textDirection;
   void setTextDirection(TextDirection v) {
     if (v != _textDirection) {
@@ -952,13 +972,13 @@ class _TableRenderObject extends RenderBox
         : _borderSpacing;
   }
 
-  double get paddingBottom => _border?.bottom.width ?? 0.0;
+  double get paddingBottom => (_border?.bottom.width ?? 0.0) + _padding.bottom;
 
-  double get paddingLeft => _border?.left.width ?? 0.0;
+  double get paddingLeft => (_border?.left.width ?? 0.0) + _padding.left;
 
-  double get paddingRight => _border?.right.width ?? 0.0;
+  double get paddingRight => (_border?.right.width ?? 0.0) + _padding.right;
 
-  double get paddingTop => _border?.top.width ?? 0.0;
+  double get paddingTop => (_border?.top.width ?? 0.0) + _padding.top;
 
   double get rowGap {
     final border = _border;

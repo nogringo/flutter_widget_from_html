@@ -399,6 +399,43 @@ Future<void> main() async {
     });
   });
 
+  group('padding', () {
+    testWidgets('renders padding inside border', (WidgetTester tester) async {
+      const html = '<table style="border: 1px solid; padding: 10px">'
+          '<tr><td>Foo</td></tr></table>';
+      final explained = await explain(tester, html);
+      expect(
+        explained,
+        equals(
+          '[SingleChildScrollView:child=[HtmlTable:children='
+          '${_richtext('Foo')}'
+          ']]',
+        ),
+      );
+      expect(tester.table.padding, equals(const EdgeInsets.all(10)));
+
+      final tableTopLeft = tester.getTopLeft(find.byType(HtmlTable));
+      final fooTopLeft = tester.getTopLeft(find.byType(RichText));
+      // border + padding + border-spacing + cellpadding
+      expect(fooTopLeft - tableTopLeft, equals(const Offset(14, 14)));
+    });
+
+    testWidgets('skips padding with border-collapse', (tester) async {
+      const html = '<table style="border-collapse: collapse; padding: 10px">'
+          '<tr><td>Foo</td></tr></table>';
+      final explained = await explain(tester, html);
+      expect(
+        explained,
+        equals(
+          '[SingleChildScrollView:child=[HtmlTable:children='
+          '${_richtext('Foo')}'
+          ']]',
+        ),
+      );
+      expect(tester.table.padding, equals(EdgeInsets.zero));
+    });
+  });
+
   group('cellspacing', () {
     testWidgets('renders without cellspacing', (WidgetTester tester) async {
       const html = '<table><tbody><tr><td>Foo</td></tr></tbody></table>';
@@ -1144,6 +1181,22 @@ Future<void> main() async {
         await explain(t, '<table cellspacing="20"><tr><td>2</td></tr></table>');
         final after = t.table;
         expect(after.borderSpacing, equals(20.0));
+      });
+
+      testWidgets('updates padding', (WidgetTester tester) async {
+        await explain(
+          tester,
+          '<table style="padding: 10px"><tr><td>1</td></tr></table>',
+        );
+        final before = tester.table;
+        expect(before.padding, equals(const EdgeInsets.all(10)));
+
+        await explain(
+          tester,
+          '<table style="padding: 20px"><tr><td>2</td></tr></table>',
+        );
+        final after = tester.table;
+        expect(after.padding, equals(const EdgeInsets.all(20)));
       });
 
       testWidgets('updates textDirection', (WidgetTester tester) async {
