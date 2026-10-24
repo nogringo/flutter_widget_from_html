@@ -129,6 +129,9 @@ class HtmlTableCell extends ParentDataWidget<_TableCellData> {
   /// The row index this cell should start.
   final int rowStart;
 
+  /// The cell width.
+  final CssSizingValue? width;
+
   final bool _isCaption;
 
   /// Creates a TD (table cell) widget.
@@ -141,6 +144,7 @@ class HtmlTableCell extends ParentDataWidget<_TableCellData> {
     Key? key,
     int rowSpan,
     required int rowStart,
+    CssSizingValue? width,
   }) = HtmlTableCell._;
 
   const HtmlTableCell._({
@@ -153,6 +157,7 @@ class HtmlTableCell extends ParentDataWidget<_TableCellData> {
     super.key,
     this.rowSpan = 1,
     required this.rowStart,
+    this.width,
   })  : assert(columnSpan >= 1),
         assert(columnStart >= 0),
         assert(rowSpan >= 1),
@@ -199,6 +204,11 @@ class HtmlTableCell extends ParentDataWidget<_TableCellData> {
       needsLayout = true;
     }
 
+    if (data.width != width) {
+      data.width = width;
+      needsLayout = true;
+    }
+
     if (needsLayout) {
       final parent = renderObject.parent;
       if (parent is RenderObject) {
@@ -218,16 +228,35 @@ class HtmlTableCell extends ParentDataWidget<_TableCellData> {
     properties.add(IntProperty('columnStart', columnStart));
     properties.add(IntProperty('rowSpan', rowSpan, defaultValue: 1));
     properties.add(IntProperty('rowStart', rowStart));
+    properties.add(DiagnosticsProperty('width', width, defaultValue: null));
   }
 
   @override
   Type get debugTypicalAncestorWidgetClass => HtmlTable;
 }
 
+// Runs as in release mode: in debug, a descendant without dry layout support
+// (e.g. `RenderImage` baseline) throws midway and leaves the subtree unusable.
+double _getMinIntrinsicWidth(RenderBox box) {
+  var wasCheckingIntrinsics = false;
+  assert(() {
+    wasCheckingIntrinsics = RenderObject.debugCheckingIntrinsics;
+    RenderObject.debugCheckingIntrinsics = true;
+    return true;
+  }());
+
+  try {
+    return box.getMinIntrinsicWidth(double.infinity);
+  } finally {
+    assert(() {
+      RenderObject.debugCheckingIntrinsics = wasCheckingIntrinsics;
+      return true;
+    }());
+  }
+}
+
 extension on Iterable<double> {
   double get sum => isEmpty ? 0.0 : reduce(_sum);
-
-  Iterable<double> get zeros => where((v) => v.isZero);
 
   static double _sum(double value, double element) => value + element;
 }
@@ -243,25 +272,29 @@ extension on List<double> {
   void setMaxColumnWidths(
     _TableRenderObject tro,
     _TableCellData data,
-    double calculatedWidth,
-  ) {
-    final columnWidth = calculatedWidth.isNaN
-        ? double.nan
-        : ((calculatedWidth - tro._calculateColumnGaps(data)) /
-            data.columnSpan);
-    for (var c = 0; c < data.columnSpan; c++) {
-      final column = data.columnStart + c;
+    double calculatedWidth, {
+    List<bool>? isAuto,
+  }) {
+    final start = data.columnStart;
+    final end = start + data.columnSpan;
 
-      if (columnWidth.isNaN) {
+    if (calculatedWidth.isNaN) {
+      for (var column = start; column < end; column++) {
         if (this[column].isZero) {
-          this[column] = columnWidth;
+          this[column] = double.nan;
         }
-      } else {
-        // make sure each column has enough width for the child
-        // oversimplified: the colspan splits its columns evenly
-        this[column] = max(this[column], columnWidth);
       }
+      return;
     }
+
+    // make sure the columns have enough width for the child
+    // a colspan only adds what its columns are missing
+    final columnWidths = _TableRenderLayouter.expandValues(
+      getRange(start, end).toList(growable: false),
+      isAuto: isAuto?.getRange(start, end),
+      required: calculatedWidth - tro._calculateColumnGaps(data),
+    );
+    setRange(start, end, columnWidths);
   }
 
   double sumRange(_TableCellData data) =>
@@ -276,6 +309,7 @@ class _TableCellData extends ContainerBoxParentData<RenderBox> {
   bool isCaption = false;
   int rowSpan = 1;
   int rowStart = 0;
+  CssSizingValue? width;
 
   double calculateHeight(_TableRenderObject tro, List<double> heights) {
     final gaps = tro._calculateRowGaps(this);
@@ -384,12 +418,12 @@ class _TableRenderLayouter {
     final cells = step1.cells;
     final naiveColumnWidths = List.filled(step1.columnCount, .0);
 
-    final requiredWidth = step1.requiredWidth;
-    if (requiredWidth != null && step1.columnCount > 0) {
-      final cellMinWidth = requiredWidth / step1.columnCount;
-      for (var i = 0; i < cells.length; i++) {
-        final data = cells[i];
-        naiveColumnWidths.setMaxColumnWidths(tro, data, cellMinWidth);
+    final tableWidth =
+        step1.requiredWidth ?? step1.availableWidth ?? double.infinity;
+    for (final data in cells) {
+      final cellWidth = data.width?.clamp(0, tableWidth);
+      if (cellWidth != null && cellWidth.isFinite) {
+        naiveColumnWidths.setMaxColumnWidths(tro, data, cellWidth);
       }
     }
 
@@ -411,24 +445,29 @@ class _TableRenderLayouter {
     final childMinWidths = List<double?>.filled(children.length, null);
     final maxColumnWidths =
         step2.naiveColumnWidths.map((v) => v ?? .0).toList();
-    final minColumnWidths = List.filled(step1.columnCount, .0);
+    final naiveFits =
+        availableWidth == null || maxColumnWidths.sum <= availableWidth;
+    // keep naive values unless they overflow together (e.g. 600px email layout)
+    final minColumnWidths =
+        naiveFits ? [...maxColumnWidths] : List.filled(step1.columnCount, .0);
 
     // the current algorithm prioritizes naive value, then layouter value as column width
     // it only considers min value when the columns don't fit
     var columnWidths = maxColumnWidths;
-    if (columnWidths.zeros.isEmpty &&
-        (availableWidth == null || columnWidths.sum <= availableWidth)) {
-      return _TableDataStep3(
-        step2,
-        columnWidths: columnWidths,
-      );
-    }
+    final isAuto = step2.isAuto;
+    // single column cells go first, a colspan then fills what is missing
+    final indices = [
+      for (var i = 0; i < cells.length; i++)
+        if (cells[i].columnSpan == 1) i,
+      for (var i = 0; i < cells.length; i++)
+        if (cells[i].columnSpan > 1) i,
+    ];
 
     var shouldLoop = true;
     while (shouldLoop) {
       shouldLoop = false;
 
-      for (var i = 0; i < children.length; i++) {
+      for (final i in indices) {
         final child = children[i];
         final data = cells[i];
 
@@ -437,7 +476,12 @@ class _TableRenderLayouter {
           // layout cells for the initial width
           final layoutSize = layouter(child, constraints);
           cellSizes[i] = layoutSize;
-          maxColumnWidths.setMaxColumnWidths(tro, data, layoutSize.width);
+          maxColumnWidths.setMaxColumnWidths(
+            tro,
+            data,
+            layoutSize.width,
+            isAuto: isAuto,
+          );
           logger.fine('[3] Got child#$i $layoutSize@$constraints');
           shouldLoop = true;
         }
@@ -464,7 +508,12 @@ class _TableRenderLayouter {
           }
           if (childMinWidth != null) {
             childMinWidths[i] = childMinWidth;
-            minColumnWidths.setMaxColumnWidths(tro, data, childMinWidth);
+            minColumnWidths.setMaxColumnWidths(
+              tro,
+              data,
+              childMinWidth,
+              isAuto: isAuto,
+            );
             shouldLoop = true;
           }
         }
@@ -475,6 +524,23 @@ class _TableRenderLayouter {
           available: availableWidth,
           maxValues: maxColumnWidths,
           minValues: minColumnWidths,
+        );
+      }
+    }
+
+    final requiredWidth = step1.requiredWidth;
+    if (requiredWidth != null) {
+      // a table with a width fills it but never overflows, even with a long word
+      columnWidths = expandValues(
+        columnWidths,
+        isAuto: isAuto,
+        required: requiredWidth,
+      );
+      if (availableWidth != null) {
+        columnWidths = shrinkValues(
+          columnWidths,
+          isAuto: isAuto,
+          available: availableWidth,
         );
       }
     }
@@ -520,7 +586,7 @@ class _TableRenderLayouter {
 
     // table is too crowded
     // get min width to avoid breaking line in the middle of a word
-    return child.getMinIntrinsicWidth(double.infinity);
+    return _getMinIntrinsicWidth(child);
   }
 
   _TableDataStep4 step4ChildSizesAndRowHeights(_TableDataStep3 step3) {
@@ -631,6 +697,65 @@ class _TableRenderLayouter {
     );
   }
 
+  static List<double> expandValues(
+    List<double> values, {
+    Iterable<bool>? isAuto,
+    required double required,
+  }) {
+    final extra = required - values.sum;
+    if (extra.isZero) {
+      return values;
+    }
+
+    // like browsers, columns without a width take the extra width first
+    final autoIndices = [
+      for (final (i, auto) in (isAuto ?? const <bool>[]).indexed)
+        if (auto) i,
+    ];
+    final indices = autoIndices.isNotEmpty
+        ? autoIndices
+        : List.generate(values.length, (i) => i);
+    final indicesSum = indices.map((i) => values[i]).sum;
+
+    final result = [...values];
+    for (final i in indices) {
+      result[i] += indicesSum.isZero
+          ? extra / indices.length
+          : extra * values[i] / indicesSum;
+    }
+    return result;
+  }
+
+  static List<double> shrinkValues(
+    List<double> values, {
+    required Iterable<bool> isAuto,
+    required double available,
+  }) {
+    final sum = values.sum;
+    final excess = sum - available;
+    if (excess.isZero) {
+      return values;
+    }
+
+    // columns with a width give way first (e.g. email gutters), then words break
+    for (final shrinkAuto in const [false, true]) {
+      final indices = [
+        for (final (i, auto) in isAuto.indexed)
+          if (auto == shrinkAuto) i,
+      ];
+      final indicesSum = indices.map((i) => values[i]).sum;
+      if (indicesSum > excess) {
+        final result = [...values];
+        for (final i in indices) {
+          result[i] -= excess * values[i] / indicesSum;
+        }
+        return result;
+      }
+    }
+
+    return values.map((v) => v * available / sum).toList(growable: false);
+  }
+
   static List<double> redistributeValues({
     required double available,
     required List<double> maxValues,
@@ -709,6 +834,9 @@ class _TableDataStep2 {
     this.step1, {
     required this.naiveColumnWidths,
   });
+
+  List<bool> get isAuto =>
+      naiveColumnWidths.map((v) => v == null).toList(growable: false);
 }
 
 @immutable

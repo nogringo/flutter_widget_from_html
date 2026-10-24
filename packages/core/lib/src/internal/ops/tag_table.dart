@@ -183,6 +183,7 @@ class TagTable {
         final cssBorder = cssBorderParsed.inherit
             ? tryParseBorder(tableTree).copyFrom(cssBorderParsed)
             : cssBorderParsed;
+        final cssWidth = cellTree.sizingInput?.preferredWidth;
 
         data.builders.add((context) {
           Widget? child = cell.child;
@@ -208,6 +209,9 @@ class TagTable {
             columnStart: columnStart,
             rowSpan: rowSpan,
             rowStart: rowStart,
+            width: cssWidth == StyleSizing.k100percent
+                ? null
+                : cssWidth?.getSizing(resolved),
             child: child,
           );
         });
@@ -376,7 +380,10 @@ class _TagTableRow {
 
     for (final style in rowTree.styles) {
       // forward all row styles to its cells, this is quite dangerous...
-      cellTree.styles.add(style);
+      // except width, which browsers ignore on rows
+      if (style.property != kCssWidth) {
+        cellTree.styles.add(style);
+      }
     }
 
     _registerCellOp(cellTree);

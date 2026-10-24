@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:golden_toolkit/golden_toolkit.dart';
@@ -701,6 +702,75 @@ Future<void> main() async {
       expect(actual.width, equals(expected.width));
       expect(actual.left, equals(windowSize - actual.right));
     });
+
+    group('TD width inside TABLE width=100%', () {
+      const table = '<table width="100%" cellpadding="0" cellspacing="0">';
+      const spacer = '<td width="20"></td>';
+
+      testWidgets('renders spacers', (WidgetTester tester) async {
+        tester.setWindowSize(const Size(windowSize, windowSize));
+        await explain(
+          tester,
+          '$table<tr>$spacer<td>Foo</td>$spacer</tr></table>',
+        );
+
+        final foo = tester.getRect(find.byType(RichText));
+        expect(foo.left, equals(20.0));
+      });
+
+      testWidgets('renders spacers with colspan', (WidgetTester tester) async {
+        tester.setWindowSize(const Size(windowSize, windowSize));
+        await explain(
+          tester,
+          '$table<tr><td colspan="3">Foo</td></tr>'
+          '<tr>$spacer<td>Bar</td>$spacer</tr></table>',
+        );
+
+        final bar = tester.getRect(find.byType(RichText).last);
+        expect(bar.left, equals(20.0));
+      });
+
+      testWidgets('centers between empty cells', (WidgetTester tester) async {
+        tester.setWindowSize(const Size(windowSize, windowSize));
+        await explain(
+          tester,
+          '$table<tr style="width: 100%">'
+          '<td></td><td width="42">Foo</td><td></td></tr></table>',
+        );
+
+        final foo = tester.getRect(find.byType(RichText));
+        expect(foo.left, equals(29.0));
+      });
+
+      testWidgets('shrinks spacers before breaking words', (tester) async {
+        tester.setWindowSize(const Size(windowSize, windowSize));
+        await explain(
+          tester,
+          '<p>Foofoo</p>$table'
+          '<tr><td width="45"></td><td>Foofoo</td><td width="45"></td></tr>'
+          '</table>',
+        );
+
+        final texts = find.byType(RichText);
+        final oneLine = tester.getSize(texts.first);
+        final foo = tester.getRect(texts.last);
+        expect(foo.height, equals(oneLine.height));
+        expect(foo.left, lessThan(45.0));
+      });
+
+      testWidgets('renders long word without overflow', (tester) async {
+        tester.setWindowSize(const Size(windowSize, windowSize));
+        await explain(
+          tester,
+          '$table<tr>$spacer<td>${'Foo' * 10}</td>$spacer</tr></table>',
+        );
+
+        final tableSize = tester.getSize(find.byType(HtmlTable));
+        expect(tableSize.width, equals(windowSize));
+        final foo = tester.getRect(find.byType(RichText));
+        expect(foo.left, equals(20.0));
+      });
+    });
   });
 
   group('valign', () {
@@ -1262,9 +1332,9 @@ Future<void> main() async {
               HtmlTableCell(
                 columnStart: 0,
                 rowStart: 0,
-                child: LayoutBuilder(
-                  builder: (_, __) => const Text('Foo foo foo foo'),
+                child: _Unmeasurable(
                   key: left,
+                  child: const Text('Foo foo foo foo'),
                 ),
               ),
               const HtmlTableCell(
@@ -1277,6 +1347,41 @@ Future<void> main() async {
         ]);
 
         expect(left.width, equals(table.width / 2));
+      });
+
+      testWidgets('measures child without dry baseline', (tester) async {
+        await pumpColumn(tester, [
+          HtmlTable(
+            key: table,
+            children: [
+              HtmlTableCell(
+                columnStart: 0,
+                rowStart: 0,
+                child: RichText(
+                  key: left,
+                  text: const TextSpan(
+                    children: [
+                      TextSpan(text: 'Foo foo '),
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.baseline,
+                        baseline: TextBaseline.alphabetic,
+                        child: RawImage(width: 10, height: 10),
+                      ),
+                    ],
+                  ),
+                  textDirection: TextDirection.ltr,
+                ),
+              ),
+              const HtmlTableCell(
+                columnStart: 1,
+                rowStart: 0,
+                child: Text('super' 'wide' 'without' 'space'),
+              ),
+            ],
+          ),
+        ]);
+
+        expect(left.width, greaterThan(.0));
       });
 
       testWidgets("skips narrow cell in the same column", (tester) async {
@@ -1848,4 +1953,18 @@ class _Golden extends StatelessWidget {
           child: HtmlWidget(contents),
         ),
       );
+}
+
+class _Unmeasurable extends SingleChildRenderObjectWidget {
+  const _Unmeasurable({super.child, super.key});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _UnmeasurableRenderBox();
+}
+
+class _UnmeasurableRenderBox extends RenderProxyBox {
+  @override
+  double computeMinIntrinsicWidth(double height) =>
+      throw UnsupportedError('Unmeasurable');
 }

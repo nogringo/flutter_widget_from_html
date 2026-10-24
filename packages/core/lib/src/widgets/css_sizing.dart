@@ -73,8 +73,8 @@ class CssSizing extends SingleChildRenderObjectWidget {
     return _RenderCssSizing(
       maxHeight: maxHeight ?? hint?.maxHeight.cssSizingValue,
       maxWidth: maxWidth ?? hint?.maxWidth.cssSizingValue,
-      minHeight: minHeight ?? hint?.minHeight.cssSizingValue,
-      minWidth: minWidth ?? hint?.minWidth.cssSizingValue,
+      minHeight: minHeight,
+      minWidth: minWidth,
       preferredAxis: preferredAxis,
       preferredHeight: preferredHeight,
       preferredWidth: preferredWidth,
